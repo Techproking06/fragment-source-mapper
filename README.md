@@ -802,8 +802,3 @@ This project is an academic prototype developed for demonstration and evaluation
 ## Author
 
 **Aditya Singh Tomar**
-
-Department of Mathematics and Computing  
-Madhav Institute of Technology & Science, Gwalior
-
-GitHub: **Techproking06**
