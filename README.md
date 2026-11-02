@@ -1,269 +1,809 @@
 # Fragment Source Mapper
 
-**Fragment-Level Source Mapping for Patchwork Plagiarism Analysis** — a presentation-ready web prototype.
+### Fragment-Level Source Mapping for Patchwork Plagiarism Analysis
 
-```
-Submitted document
-      ↓  Fragmentation
-      ↓  Semantic matching   (Sentence-BERT + cosine similarity, all local)
-      ↓  Best source
-      ↓  Fragment-level source map
-```
+A **client-side web prototype** that detects potential patchwork plagiarism by splitting a submitted document into fragments, comparing each fragment against a reference corpus, and mapping it to its most likely source.
 
-One submission can be stitched together from several documents. Whole-document checks miss this.
-This prototype splits the submission into **fragments**, compares **each fragment** against a
-reference set, and draws a **fragment → source map**.
+> **Important:** This prototype identifies **similarity leads**, not plagiarism. A similarity score is not proof of plagiarism and must be reviewed by a human.
+
+```text
+Submitted Document
+       ↓
+   Fragmentation
+       ↓
+Jaccard + Semantic Matching
+       ↓
+Best Matching Source Fragment
+       ↓
+Fragment → Source Map
+       ↓
+Explainable Decision
+```
 
 ---
 
-## Run it (Windows, PowerShell)
+## Overview
 
-Requires **Node.js 18+** (tested on Node 22). No Python, no GPU, no API keys.
+Traditional whole-document similarity checks can hide the structure of a document assembled from multiple sources.
+
+**Fragment Source Mapper** takes a different approach:
+
+- Splits the submission into individual fragments.
+- Compares every fragment against every reference source.
+- Uses **Sentence-BERT semantic embeddings** and cosine similarity for semantic matching.
+- Uses **Jaccard word overlap** as a lexical baseline.
+- Identifies the best matching **source document and source sub-fragment**.
+- Applies transparent, engine-specific thresholds.
+- Provides a step-by-step **Trace This Result** explanation.
+- Includes a live validation suite against declared demo ground truth.
+- Runs entirely in the browser with **no backend, API key, or GPU**.
+
+---
+
+## Key Features
+
+| Feature | Description |
+|---|---|
+| Fragment-level analysis | Maps individual submitted fragments instead of only whole documents |
+| Semantic matching | `all-MiniLM-L6-v2` Sentence-BERT embeddings |
+| Lexical baseline | Jaccard word-overlap comparison |
+| Source mapping | Identifies the best source and matching sub-fragment |
+| Explainability | Six-stage trace for every result |
+| Live validation | Re-runs all bundled demos through the actual engine |
+| Local inference | ONNX Runtime + WebAssembly in the browser |
+| Fallback engine | Transparent TF-IDF-based illustrative engine |
+| Presentation mode | Five-slide presentation using live analysis data |
+| Theme support | Light/dark mode with OS preference detection |
+| No backend | No server-side processing or API keys required |
+
+---
+
+## Quick Start
+
+### Requirements
+
+- **Node.js 18+**
+- Modern browser
+- Internet connection for the first Sentence-BERT model download
+
+Tested with **Node.js 22**.
+
+### Install
 
 ```powershell
 cd "D:\Micro-Project Prototype"
 npm install
+```
+
+### Development
+
+```powershell
 npm run dev
 ```
 
-Then open the URL Vite prints — **http://localhost:5173**
+Open the URL printed by Vite, normally:
 
-For a presentation, build once and serve the production bundle (faster and no dev warnings):
+```text
+http://localhost:5173
+```
+
+### Production Preview
+
+For a presentation or final demonstration:
 
 ```powershell
 npm run build
 npm run preview
 ```
 
-Opens **http://localhost:4173**
+The production preview normally runs at:
 
-| Command | What it does |
-| --- | --- |
-| `npm install` | Install dependencies (once) |
-| `npm run dev` | Development server with hot reload |
-| `npm run build` | Type-check + production build into `dist/` |
-| `npm run preview` | Serve the production build (use this for the presentation) |
-| `npm run typecheck` | TypeScript only |
+```text
+http://localhost:4173
+```
 
-> The app is a client-side SPA, so it needs a web server. Opening `index.html` from the file
-> system will not work.
+| Command | Purpose |
+|---|---|
+| `npm install` | Install dependencies |
+| `npm run dev` | Start development server |
+| `npm run build` | Type-check and create production build |
+| `npm run preview` | Serve production build |
+| `npm run typecheck` | Run TypeScript checking |
 
----
-
-## Is the semantic model real or illustrative?
-
-**Real, and it runs locally.**
-
-| | |
-| --- | --- |
-| **Model** | `all-MiniLM-L6-v2` — a standard Sentence-BERT sentence-embedding model |
-| **Runtime** | `@huggingface/transformers` (ONNX Runtime, WebAssembly) **inside the browser** |
-| **Vector** | 384 dimensions, mean-pooled, L2-normalised |
-| **Score** | Cosine similarity between the two embedding vectors |
-| **Server / API key** | None. Nothing leaves the machine. |
-| **First run** | Downloads ~23 MB of quantised weights from the Hugging Face CDN once, then the browser caches them. The app preloads this in the background ~1.2 s after load, so an analysis never waits on the network. |
-
-You can verify it yourself: open DevTools → Network, filter by `onnx` / `huggingface`, and watch
-the weights load. The engine pill in the footer states which engine produced the numbers on screen.
-
-### Fallback: the labelled *Illustrative* engine
-
-If the weights cannot be fetched (offline, blocked CDN, corporate proxy), the app automatically
-falls back to an **Illustrative** engine and says so in the UI — on the run bar, in a warning
-banner, in the results footnote, and in the footer:
-
-* stemmed tokenisation (Porter stemmer) + stop-word removal
-* TF-IDF vectors + cosine
-* reduced-weight synonym expansion from a small curated paraphrase lexicon (`src/lib/lexicon.ts`)
-
-**This is a transparent heuristic, not a machine-learning result.** It is never presented as one.
-The `Sentence-BERT / Illustrative` segmented control lets you switch engines deliberately and
-compare — which is exactly the point of the "Why semantic similarity" section.
+> The application is a client-side SPA and should be served through a web server. Opening `index.html` directly from the file system is not supported.
 
 ---
 
-## Using it
+# Semantic Matching Engine
 
-1. Pick a demo (one click populates both documents and runs the analysis), or paste your own text
-   into the left pane (or press **Open .txt** to load a plain-text document) and press **Analyze**.
-2. The submitted document on the left re-renders as coloured fragments; curved lines connect each
-   fragment to its best-matching source on the right.
-3. The table underneath shows, per fragment: best source, the source sub-fragment that matched
-   (`§2`), the margin over the runner-up, all four source scores, cosine similarity **and** the
-   Jaccard word-overlap baseline for comparison.
-4. Press **Trace This Result** on any row to open the step-by-step working for that one fragment.
+## Is the semantic model real?
 
-### Trace This Result
+**Yes. The semantic engine runs locally in the browser.**
 
-Every result row opens an explainability panel that walks one fragment through the whole pipeline in
-one continuous column — **fragment → Jaccard → Sentence-BERT → cosine → ranking → decision** — with a
-numbered stage strip at the top and a connector between each pair of cards stating what the previous
-stage hands on. It reads only intermediates the engine already computed — nothing is recomputed for
-display, so the panel and the table can never disagree:
+The prototype uses:
 
-| Stage | Shows |
-| --- | --- |
-| **1 · Submitted fragment** | The fragment, the engine that produced the numbers, its tokens (total and unique), the position (`F1 of 6`) and the fact that the text takes two parallel paths below |
-| **2 · Jaccard word overlap** | The real token sets `A` and `B`, their intersection and union as chips, and `\|A ∩ B\| / \|A ∪ B\| = 10 / 19 = 0.53` |
-| **3 · SBERT** | Model id, dimensionality, mean-pooling + L2 normalisation, and the first 8 values of **both** vectors (or the top TF-IDF terms, labelled as the illustrative engine) |
-| **4 · Cosine** | `cos θ = (A · B) / (‖A‖ · ‖B‖)` with the dot product and both norms substituted, and the clamped score the engine used |
-| **5 · Ranking** | All four sources by cosine, each represented by its best sub-fragment, with the Jaccard cross-check for the same pair |
-| **6 · Decision** | Score, thresholds, the exact rule applied, the assigned source — or **“Below threshold — no source assigned.”** — and a generated sentence |
+| Component | Implementation |
+|---|---|
+| Model | `all-MiniLM-L6-v2` |
+| Model type | Sentence-BERT sentence embeddings |
+| Runtime | `@huggingface/transformers` |
+| Execution | ONNX Runtime + WebAssembly |
+| Embedding size | 384 dimensions |
+| Pooling | Mean pooling |
+| Normalisation | L2 normalisation |
+| Similarity | Cosine similarity |
+| Backend | None |
+| API keys | None |
+| GPU | Not required |
 
-Jaccard and SBERT are shown as **two parallel evidence streams**. Cosine alone ranks the sources and
-decides the status; Jaccard never moves a source up or down, and the connector after stage 2 says so
-in the panel. The Method section walks the same six stages, live, with the same numbers.
+The model weights are downloaded from the Hugging Face CDN on the first run and subsequently cached by the browser.
 
-### Validation (live PASS/FAIL)
+The application also preloads the model in the background shortly after loading so that analysis normally does not need to wait for model initialisation.
 
-The **Validation** section re-runs all four bundled submissions through the real engine and compares
-the produced mapping against the declared ground truth in `src/data/demos.ts`. Expected and actual
-mappings are shown side by side with the per-fragment cosine and a PASS/FAIL pill.
+### Verify the model yourself
 
-Nothing is pre-computed and no threshold is tuned to make a case pass: under the real Sentence-BERT
-engine all four cases pass; under the fallback engine, `single` (fragment 5) and `paraphrased`
-(fragment 5) fail honestly — which is exactly the gap the section exists to show. The run names the
-engine that actually produced the numbers, including when the fallback was used despite SBERT being
-requested.
+Open the browser's Developer Tools:
 
-### Comparison and limitations
+```text
+DevTools → Network
+```
 
-* **Real-world comparison** — two balanced panels, then a compact five-row “What’s different?”
-  table.
-  * **Left — illustrative reference.** No similarity report exists in this project and none was
-    obtained, so the panel is an original hand-built mock: a sample document with highlighted
-    passages, an explicitly illustrative similarity indicator and a placeholder source list.
-    Selecting a passage selects its placeholder source and selecting a source highlights its
-    passage. It is labelled **“Illustrative reference · Not an actual Turnitin report.”**, imitates
-    no vendor’s report and states no result of any commercial service.
-  * **Right — this prototype, live.** The selected fragment with its real Jaccard score and shared
-    tokens, the actual embedding information, the computed cosine, all four ranked sources and the
-    threshold decision — read from the current run, always labelled with the engine that produced it.
-  * The two panels are independent and share no calculation; the note under the table states that
-    this is a qualitative workflow comparison, not a performance benchmark, and that no claim of
-    superior accuracy is made.
-* **Honest scope** — four stated limitations (reference corpus, semantic false positives,
-  similarity-is-not-proof, language & evaluation scope) plus a collapsed future-work list.
+Then filter for:
 
-### Demo modes
+```text
+onnx
+```
 
-| Demo | What it shows |
-| --- | --- |
-| **Single source** | All six fragments resolve to Source A |
-| **Patchwork · multiple sources** | The main case — fragments map to A, C, A, B, D, C |
-| **Paraphrased patchwork** | Same stitching, rewritten wording. Jaccard collapses to 4–29 %; SBERT cosine stays at 57–77 % and the mapping is still correct |
-| **Mostly original** | Only two fragments have a source; the other four stay below threshold |
+or:
 
-### Presentation mode
+```text
+huggingface
+```
 
-Click **Presentation** in the header (or `npm run preview`, then the button). Five slides:
+The model files can be observed during the initial load.
 
-1. What is patchwork plagiarism? — **the band pattern mirrors your live mapping**
-2. Fragmentation — **your real fragment ids**
-3. Semantic matching — **your real Jaccard and cosine values**
-4. Source mapping
-5. Final source map — **mirrors your live analysis**
-
-Slides 1–3 show their data source under the graphic ("live · …" or "concept illustration — run a
-demo"), so nothing on screen is ever presented as measured when it is illustrative.
-
-Navigate with `→` / `←`, `Space`, `PageUp` / `PageDown`, the on-screen arrows, or the dots.
-`Esc` closes. Opening presentation with no analysis running automatically launches the patchwork
-demo so the last two slides are never empty.
-
-### Theme
-
-Sun/moon toggle in the header. Defaults to your OS preference and is remembered.
+The application's engine indicator also identifies which engine produced the displayed results.
 
 ---
 
-## How the pipeline works
+# Illustrative Fallback Engine
 
-`src/lib/`
+If the Sentence-BERT model cannot be downloaded because of an offline environment, blocked CDN, or network restriction, the application can use a clearly labelled **Illustrative** engine.
 
-| File | Role |
-| --- | --- |
-| `text.ts` | Sentence fragmentation, stop-words, Porter stemmer, Jaccard (+ `jaccardDetail` for the panel) |
-| `sbert.ts` | Loads `all-MiniLM-L6-v2` via transformers.js and embeds sentences |
-| `similarity.ts` | Sparse TF-IDF vectors, synonym expansion, cosine (dense + sparse) and the `cosine*Detail` arithmetic |
-| `engine.ts` | Orchestrates: fragment → jaccard → embed → cosine → rank → map. Exports `STAGES`, `THRESHOLDS`, `statusFor` |
-| `trace.ts` | Builds the "Trace This Result" panel from the stored intermediates only |
-| `validate.ts` | Re-runs every demo through the engine and compares mapping vs ground truth |
-| `lexicon.ts` | Paraphrase groups used **only** by the illustrative engine |
+The fallback uses:
 
-A source's score for a fragment is the **maximum** cosine over that source's own fragments, so the
-map reports which sub-fragment matched, not just which document. The Jaccard shown for that pair is
-read at the **same** winning sub-fragment index, so lexical and semantic evidence always describe
-the same two pieces of text.
+- Stop-word removal
+- Porter stemming
+- TF-IDF vectors
+- Cosine similarity
+- A small curated paraphrase lexicon
 
-Two thresholds are used to decide *strong* / *possible* / *no strong match*, calibrated per engine
-(`sbert`: 0.70 / 0.52 · `illustrative`: 0.60 / 0.40) and documented in the source.
+The fallback is intentionally labelled **Illustrative**.
 
----
+It is **not presented as a machine-learning result**.
 
-## Honest limitations
+This distinction is maintained throughout the interface, including:
 
-* **A match is a lead for a human reviewer, not proof of plagiarism.** Nothing in this prototype
-  should be read as a verdict. Every screen that shows a score says so.
-* Very short fragments produce noisy scores. All bundled demo fragments are a full sentence.
-* Shared technical vocabulary produces false leads — documents on the same topic resemble each
-  other even with no copying.
-* Proper quotation and citation would also score highly; this prototype does not model intent.
-* The four reference documents are short synthetic passages written for this project.
-* The illustrative engine deliberately under-performs on paraphrase. That gap is the argument for
-  Sentence-BERT, not a bug — but do not quote its numbers as ML results.
-* Sentence-BERT captures semantic similarity, not verbatim overlap. The two engines are shown
-  side by side (cosine **and** Jaccard) precisely so the reviewer sees both signals.
+- Run controls
+- Warning banner
+- Results
+- Validation
+- Trace panel
+- Footer
+
+The application therefore makes a clear distinction between:
+
+```text
+Sentence-BERT
+Real semantic embedding model
+            vs.
+Illustrative
+Heuristic TF-IDF baseline
+```
 
 ---
 
-## Tests
+# How It Works
 
-### 1. Calculation & ranking assertions
+The core pipeline is:
+
+```text
+1. Fragment
+      ↓
+2. Calculate Jaccard overlap
+      ↓
+3. Generate embeddings
+      ↓
+4. Calculate cosine similarity
+      ↓
+5. Rank source fragments
+      ↓
+6. Apply threshold
+      ↓
+7. Assign source / no source
+```
+
+For each submitted fragment, the engine compares it against the fragments belonging to every reference document.
+
+The score assigned to a source is the **maximum cosine similarity** obtained against that source's fragments.
+
+Therefore, the result identifies both:
+
+```text
+Best Source
+     +
+Best Matching Source Fragment
+```
+
+rather than only reporting a document-level score.
+
+---
+
+## Thresholds
+
+Two decision thresholds are used:
+
+| Engine | Strong Match | Possible Match |
+|---|---:|---:|
+| Sentence-BERT | `0.70` | `0.52` |
+| Illustrative | `0.60` | `0.40` |
+
+The thresholds are engine-specific and documented in the source code.
+
+The final source ranking is determined by **cosine similarity**.
+
+Jaccard is displayed as a separate lexical comparison and does **not** change the source ranking.
+
+---
+
+# Using the Application
+
+### 1. Choose a demo or enter your own document
+
+You can:
+
+- Select a bundled demo.
+- Paste text into the submission panel.
+- Load a `.txt` file.
+
+Then select **Analyze**.
+
+### 2. Inspect the fragment map
+
+The submitted document is divided into fragments.
+
+Each fragment is visually connected to its best matching reference source.
+
+### 3. Inspect the results table
+
+For every fragment, the results table provides:
+
+- Best source
+- Matching source sub-fragment
+- Cosine similarity
+- Jaccard overlap
+- Margin over the runner-up
+- Scores for all reference sources
+- Final threshold decision
+
+### 4. Trace an individual result
+
+Select:
+
+```text
+Trace This Result
+```
+
+to inspect the complete calculation for a specific fragment.
+
+---
+
+# Trace This Result
+
+The trace panel provides an explainable six-stage pipeline.
+
+```text
+Fragment
+   ↓
+Jaccard
+   ↓
+Sentence-BERT
+   ↓
+Cosine
+   ↓
+Ranking
+   ↓
+Decision
+```
+
+| Stage | Information shown |
+|---|---|
+| **1 · Submitted Fragment** | Fragment text, engine, tokens, position and processing paths |
+| **2 · Jaccard** | Token sets, intersection, union and actual calculation |
+| **3 · SBERT** | Model, dimensions, pooling, normalisation and embedding values |
+| **4 · Cosine** | Dot product, vector norms and calculated similarity |
+| **5 · Ranking** | All sources ranked by cosine similarity |
+| **6 · Decision** | Score, threshold, rule and final source assignment |
+
+The trace panel uses the **intermediate values already produced by the engine**.
+
+Nothing is recomputed solely for display.
+
+This ensures that:
+
+```text
+Results Table
+      =
+Trace Panel
+```
+
+for the same analysis run.
+
+Jaccard and Sentence-BERT are presented as **parallel evidence streams**.
+
+Jaccard does not alter the semantic ranking.
+
+---
+
+# Live Validation
+
+The **Validation** section re-runs all four bundled demonstrations through the actual analysis engine.
+
+It compares:
+
+```text
+Declared Ground Truth
+        vs.
+Actual Engine Mapping
+```
+
+and reports:
+
+- Expected source
+- Actual source
+- Fragment-level cosine
+- PASS / FAIL status
+- Engine used
+
+Under the genuine Sentence-BERT engine, all four bundled cases pass.
+
+The fallback engine is intentionally weaker on paraphrased examples, demonstrating the difference between lexical/heuristic matching and semantic embedding-based matching.
+
+The validation system does **not** use pre-computed results.
+
+---
+
+# Demo Cases
+
+| Demo | Purpose |
+|---|---|
+| **Single source** | All six fragments map to Source A |
+| **Patchwork · multiple sources** | Fragments map to A, C, A, B, D, C |
+| **Paraphrased patchwork** | Demonstrates semantic matching despite rewritten wording |
+| **Mostly original** | Only two fragments receive source matches |
+
+The paraphrased case is particularly useful for demonstrating the difference between lexical overlap and semantic similarity.
+
+---
+
+# Presentation Mode
+
+The application includes a five-slide presentation mode.
+
+Open:
+
+```text
+Presentation
+```
+
+from the application header.
+
+### Slides
+
+1. **What is patchwork plagiarism?**
+2. **Fragmentation**
+3. **Semantic matching**
+4. **Source mapping**
+5. **Final source map**
+
+The presentation uses the application's live analysis where applicable.
+
+Slides clearly distinguish between:
+
+```text
+Live data
+```
+
+and:
+
+```text
+Concept illustration
+```
+
+so illustrative graphics are not presented as measured results.
+
+### Controls
+
+Presentation navigation supports:
+
+- `→`
+- `←`
+- `Space`
+- `PageUp`
+- `PageDown`
+- On-screen controls
+- Slide indicators
+- `Esc` to close
+
+Opening presentation mode without an active analysis automatically launches the patchwork demo.
+
+---
+
+# Comparison Section
+
+The application includes a qualitative comparison between a conventional similarity-report workflow and the fragment-level approach used by this prototype.
+
+### Illustrative reference
+
+The reference panel is an **original hand-built mock**.
+
+It is:
+
+- Not an actual Turnitin report
+- Not obtained from a commercial similarity service
+- Not intended to reproduce a vendor interface
+- Not a claim about any commercial system's results
+
+It exists only to illustrate the difference between document-level similarity reporting and fragment-level source mapping.
+
+### This prototype
+
+The live panel displays:
+
+- Current fragment
+- Jaccard score
+- Shared tokens
+- Embedding information
+- Cosine similarity
+- Ranked sources
+- Threshold decision
+- Active engine
+
+The two panels are independent and share no calculations.
+
+> This is a qualitative workflow comparison, not a performance benchmark. No claim of superior accuracy is made.
+
+---
+
+# Project Structure
+
+The main analysis logic is located in `src/lib/`.
+
+| File | Responsibility |
+|---|---|
+| `text.ts` | Fragmentation, stop-words, Porter stemming and Jaccard |
+| `sbert.ts` | Sentence-BERT model loading and sentence embeddings |
+| `similarity.ts` | TF-IDF, synonym expansion and cosine calculations |
+| `engine.ts` | Main analysis pipeline and source mapping |
+| `trace.ts` | Explainability data for Trace This Result |
+| `validate.ts` | Demo validation and ground-truth comparison |
+| `lexicon.ts` | Paraphrase groups used by the illustrative engine |
+
+The main pipeline is orchestrated by `engine.ts`:
+
+```text
+Fragment
+   ↓
+Jaccard
+   ↓
+Embedding
+   ↓
+Cosine
+   ↓
+Ranking
+   ↓
+Mapping
+```
+
+---
+
+# Testing
+
+## Calculation and Ranking Tests
+
+Run:
 
 ```powershell
 npm run test:calc
 ```
 
-`test/calc.test.mjs` loads the real TypeScript modules through Vite's SSR loader (same code the
-browser runs) and asserts: tokenisation strips stop-words and stems, fragmentation merges runt
-sentences, Jaccard matches the textbook definition, `jaccardDetail` returns the *same* score the
-engine uses and reports its real sets, cosine matches hand-computed `dot / (‖a‖ · ‖b‖)`, TF-IDF
-cosine stays in [0, 1] and is symmetric, `statusFor` honours the per-engine thresholds, ranking is
-sorted with `best === scores[0]`, Jaccard is computed on the cosine-winning sub-fragment, the trace
-panel agrees with the results table row-for-row, and the declared demo expectations are compared
-against the actual engine output (printed as PASS/FAIL).
+The calculation test suite checks the core algorithms and engine behaviour, including:
 
-### 2. Browser end-to-end
+- Tokenisation
+- Stop-word removal
+- Stemming
+- Fragmentation
+- Jaccard calculation
+- Jaccard detail generation
+- Cosine calculation
+- TF-IDF cosine range
+- Cosine symmetry
+- Engine-specific thresholds
+- Source ranking
+- Best-match selection
+- Winning source sub-fragment
+- Trace/result consistency
+- Demo ground-truth expectations
+
+---
+
+## Browser End-to-End Tests
+
+Build and start the production preview:
 
 ```powershell
 npm run build
 npm run preview
+```
+
+Install Playwright:
+
+```powershell
+npm i --no-save playwright
+npx playwright install chromium
+```
+
+Run:
+
+```powershell
+node test/browser.mjs
+```
+
+The browser suite covers:
+
+- All four demos
+- Both analysis engines
+- Theme switching
+- Presentation mode
+- Trace panel
+- Trace/table numerical consistency
+- Six-stage pipeline
+- Validation
+- Engine switching
+- Comparison panels
+- Passage/source interaction
+- Empty-input state
+- Console errors
+- Page errors
+
+Screenshots are written to:
+
+```text
+artifacts/
+```
+
+---
+
+## Visual Inspection
+
+A separate inspection script is available:
+
+```powershell
+node test/inspect.mjs
+```
+
+It checks selected UI areas including:
+
+- Method section
+- Comparison panels
+- Light/dark themes
+- Trace panel
+- Mobile-width layout
+- Keyboard interaction
+
+---
+
+# Technology Stack
+
+### Frontend
+
+- React 18
+- TypeScript
+- Vite
+- Hand-written CSS design system
+
+### Machine Learning
+
+- `@huggingface/transformers`
+- `all-MiniLM-L6-v2`
+- ONNX Runtime
+- WebAssembly
+
+### Algorithms
+
+- Sentence embeddings
+- Cosine similarity
+- Jaccard similarity
+- TF-IDF
+- Porter stemming
+- Tokenisation
+
+### Testing
+
+- Vite SSR test execution
+- Playwright
+- Chromium
+
+### Fonts
+
+- Inter
+- Instrument Serif
+- JetBrains Mono
+
+The application falls back to system fonts when external font loading is unavailable.
+
+---
+
+# Architecture
+
+```text
+┌───────────────────────────────────────┐
+│             React UI                  │
+│ Results · Trace · Validation · Demo   │
+└───────────────────┬───────────────────┘
+                    │
+┌───────────────────▼───────────────────┐
+│          Analysis Engine              │
+│ Fragment → Jaccard → Embed → Rank     │
+└───────────────┬───────────┬───────────┘
+                │           │
+       ┌────────▼──────┐ ┌──▼───────────┐
+       │ Sentence-BERT │ │ Illustrative │
+       │ 384-D vectors │ │ TF-IDF       │
+       │ ONNX / WASM   │ │ fallback     │
+       └───────────────┘ └──────────────┘
+                │           │
+                └─────┬─────┘
+                      ↓
+              Fragment → Source
+                   Mapping
+```
+
+The semantic engine and illustrative engine implement the same analysis interface, allowing the active engine to be switched without changing the rest of the application.
+
+---
+
+# Privacy and Data Flow
+
+The prototype has **no backend server** and requires **no API key**.
+
+For normal analysis:
+
+```text
+Document
+   ↓
+Browser
+   ↓
+Local analysis
+   ↓
+Results
+```
+
+The document itself does not need to be uploaded to a project server for analysis.
+
+The only network dependency is the initial retrieval of the Sentence-BERT model weights when they are not already cached.
+
+---
+
+# Limitations
+
+This prototype is intentionally scoped as a research/academic demonstration.
+
+### 1. Similarity is not proof
+
+A high similarity score is a **lead for human review**, not a plagiarism verdict.
+
+### 2. Short fragments can be noisy
+
+Very short fragments may produce unstable similarity scores.
+
+### 3. Shared terminology can create false positives
+
+Documents discussing the same technical topic may naturally contain similar language.
+
+### 4. Citations and quotations are not modelled
+
+A legitimate quotation can produce a high similarity score.
+
+The prototype does not determine authorial intent.
+
+### 5. Limited reference corpus
+
+The bundled reference documents are short synthetic passages created for demonstration.
+
+### 6. Language scope
+
+The current implementation is primarily designed around English text.
+
+### 7. Semantic similarity is not textual identity
+
+Sentence-BERT measures semantic similarity. It does not establish that two passages were copied from one another.
+
+### 8. Illustrative engine limitations
+
+The fallback engine intentionally performs worse on paraphrased text.
+
+This demonstrates why semantic embeddings are useful; its numbers should not be interpreted as machine-learning results.
+
+---
+
+# Research / Academic Scope
+
+This project demonstrates the feasibility of **fragment-level source mapping** as an alternative way of presenting similarity evidence.
+
+The prototype focuses on:
+
+```text
+Fragmentation
+      +
+Lexical Evidence
+      +
+Semantic Evidence
+      +
+Source Ranking
+      +
+Explainability
+```
+
+It is **not** intended to replace commercial plagiarism-detection systems, institutional academic-integrity processes, or human review.
+
+---
+
+# Reproducibility
+
+To reproduce the prototype locally:
+
+```powershell
+git clone <repository-url>
+cd <repository-folder>
+npm install
+npm run build
+npm run preview
+```
+
+For development:
+
+```powershell
+npm run dev
+```
+
+For calculation tests:
+
+```powershell
+npm run test:calc
+```
+
+For browser testing:
+
+```powershell
 npm i --no-save playwright
 npx playwright install chromium
 node test/browser.mjs
 ```
 
-`test/browser.mjs` runs all four demos in both engines, toggles the theme, walks all five
-presentation slides, opens the **Trace This Result** panel for two different rows and asserts its
-numbers equal the table's (including the six-stage pipeline order, the five connectors and the
-explicit no-source decision below threshold), runs the validation view and asserts 4/4 PASS under the
-genuine SBERT engine, checks that switching engines re-runs instead of leaving stale numbers, drives
-both comparison panels (passage ↔ placeholder source in the illustrative panel; fragment selection,
-cosine/Jaccard equality with the results table and the engine label in the live panel) and asserts the
-two panels stay independent, checks the empty input state, and fails on any console or page error
-(0 problems expected). Screenshots land in `artifacts/`.
+---
 
-`test/inspect.mjs` is a small visual pass for review: it re-shoots the Method section, both
-comparison panels in dark and light, the trace panel top/bottom, both panels on a 430 px viewport, and
-checks that the comparison controls work from the keyboard.
+# License
+
+This project is an academic prototype developed for demonstration and evaluation purposes.
 
 ---
 
-## Stack
+## Author
 
-React 18 · TypeScript · Vite · `@huggingface/transformers` (lazy-loaded, code-split) · hand-written
-CSS design system. No UI kit, no CSS framework.
+**Aditya Singh Tomar**
 
-Fonts: Inter, Instrument Serif, JetBrains Mono (Google Fonts). Offline, the app falls back to
-system fonts and still works.
+Department of Mathematics and Computing  
+Madhav Institute of Technology & Science, Gwalior
+
+GitHub: **Techproking06**
